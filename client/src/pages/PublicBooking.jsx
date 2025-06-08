@@ -4,20 +4,6 @@ import { Box, Typography, Chip, Button, CircularProgress } from '@mui/material';
 import { DateCalendar } from '@mui/x-date-pickers/DateCalendar';
 import dayjs from 'dayjs';
 
-// Mock availability data per booking link
-const availabilityData = {
-  abc123: [
-    { date: '2025-06-10', start: '10:00', end: '12:00' },
-    { date: '2025-06-12', start: '14:00', end: '16:00' },
-    { date: '2025-06-15', start: '09:00', end: '11:00' },
-  ],
-  xyz789: [
-    { date: '2025-06-11', start: '09:00', end: '11:00' },
-    { date: '2025-06-13', start: '15:00', end: '17:30' },
-  ],
-};
-
-// Utility: generate half-hour slots between start and end time
 const generateTimeSlots = (start, end) => {
   const slots = [];
   let current = dayjs(start, 'HH:mm');
@@ -44,22 +30,36 @@ function PublicBooking() {
   useEffect(() => {
     setLoading(true);
 
-    // Simulate fetch delay
-    setTimeout(() => {
-      if (availabilityData[bookingId]) {
-        setAvailability(availabilityData[bookingId]);
+    fetch(`http://localhost:5000/api/bookinglink/${bookingId}/availability`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.availability) {
+          const formattedAvailability = data.availability.map((slot) => ({
+            date: slot.date,
+            start: slot.start,  // ✅ use correct keys
+            end: slot.end,
+          }));
 
-        // Load booked slots from localStorage for this bookingId
-        const storedBookings = JSON.parse(localStorage.getItem(`bookings_${bookingId}`)) || [];
-        setBookedSlots(storedBookings);
-      } else {
+          const booked = data.bookings.map(
+            (b) => `${b.date}T${b.startTime}`
+          );
+
+          setAvailability(formattedAvailability);
+          setBookedSlots(booked);
+        } else {
+          setAvailability(null);
+        }
+
+        setLoading(false);
+        setSelectedDate(null);
+        setSelectedTime(null);
+        setBookingSuccess(false);
+      })
+      .catch((err) => {
+        console.error('Error loading booking info:', err);
         setAvailability(null);
-      }
-      setLoading(false);
-      setSelectedDate(null);
-      setSelectedTime(null);
-      setBookingSuccess(false);
-    }, 500);
+        setLoading(false);
+      });
   }, [bookingId]);
 
   if (loading) {
@@ -78,30 +78,24 @@ function PublicBooking() {
     );
   }
 
-  // Extract available dates as strings 'YYYY-MM-DD'
   const availableDates = availability.map((item) => item.date);
 
-  // Disable all dates not in availableDates
   const disableDate = (date) => {
     const formatted = dayjs(date).format('YYYY-MM-DD');
     return !availableDates.includes(formatted) || dayjs(formatted).isBefore(dayjs(), 'day');
   };
 
-  // Get availability entry for selected date
   const selectedDateStr = selectedDate ? dayjs(selectedDate).format('YYYY-MM-DD') : null;
   const dayAvailability = availability.find((item) => item.date === selectedDateStr);
 
-  // Generate available slots excluding booked ones
   let availableSlots = [];
   if (dayAvailability) {
     const allSlots = generateTimeSlots(dayAvailability.start, dayAvailability.end);
-    // Booked slots stored as "YYYY-MM-DDTHH:mm"
     availableSlots = allSlots.filter(
       (slot) => !bookedSlots.includes(`${selectedDateStr}T${slot}`)
     );
   }
 
-  // Handle booking confirmation
   const handleBook = () => {
     if (!selectedDateStr || !selectedTime) return;
 
@@ -111,7 +105,6 @@ function PublicBooking() {
     setBookingSuccess(true);
     setSelectedTime(null);
 
-    // Save updated bookings to localStorage
     localStorage.setItem(`bookings_${bookingId}`, JSON.stringify(updatedBookedSlots));
   };
 
@@ -161,7 +154,7 @@ function PublicBooking() {
 
           {bookingSuccess && (
             <Typography sx={{ mt: 2, color: 'green' }}>
-              Booking confirmed for {dayjs(selectedDate).format('MMMM DD, YYYY')} at {selectedTime}!
+              Booking confirmed for {dayjs(selectedDate).format('MMMM DD, YYYY')} !
             </Typography>
           )}
         </>

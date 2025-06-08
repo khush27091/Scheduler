@@ -211,7 +211,7 @@ export default function Dashboard() {
 
     try {
       const res = await axios.post('http://localhost:5000/api/bookinglink', { userId });
-      setGeneratedLink(`http://localhost:5173/public/${res.data.bookingLinkId}`);
+      setGeneratedLink(`http://localhost:5173/public/${res.data.linkId}`);
     } catch (err) {
       alert('Failed to generate booking link');
     }

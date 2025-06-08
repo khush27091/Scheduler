@@ -1,29 +1,74 @@
-const Availability = require('../models/Availability'); // availability model
-const Booking = require('../models/Booking'); // booking model for filtering booked slots
-const router = require('./auth');
+// routes/bookingLink.js
 
-// GET /api/booking-link/:linkId/availability
-router.get('/:linkId/availability', async (req, res) => {
-  const { linkId } = req.params;
+const express = require('express');
+const router = express.Router();
+
+const Availability = require('../models/Availability');
+const Booking = require('../models/Booking');
+const BookingLink = require('../models/BookingLink');
+
+// POST /api/booking-link/generate
+router.post('/', async (req, res) => {
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'userId is required' });
+  }
 
   try {
-    // Find booking link record
-    const bookingLink = await BookingLink.findOne({ linkId });
-    if (!bookingLink) return res.status(404).json({ message: 'Booking link not found' });
+    // ✅ Check if user already has a link
+    const existingLink = await BookingLink.findOne({ userId });
 
-    // Get all availability slots for the user
-    const availability = await Availability.find({ userId: bookingLink.userId });
+    if (existingLink) {
+      return res.status(200).json({
+        message: 'Link already exists',
+        linkId: existingLink.linkId,
+      });
+    }
 
-    // Also get booked slots on this booking link, so we can filter them later on frontend
-    const bookings = await Booking.find({ bookingLinkId: bookingLink._id });
+    // ✅ If not, generate a new unique linkId
+    let linkId;
+    let exists = true;
 
-    res.json({ availability, bookings });
+    while (exists) {
+      linkId = Math.random().toString(36).substring(2, 10);
+      exists = await BookingLink.findOne({ linkId });
+    }
+
+    const newLink = new BookingLink({
+      userId,
+      linkId,
+    });
+
+    await newLink.save();
+
+    res.status(201).json({
+      message: 'New link generated',
+      linkId,
+    });
   } catch (error) {
+    console.error('Error generating booking link:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// POST /api/booking-link/:linkId/book
+router.get('/:linkId/availability', async (req, res) => {
+  const { linkId } = req.params;
+
+  try {
+    const bookingLink = await BookingLink.findOne({ linkId });
+    if (!bookingLink) return res.status(404).json({ message: 'Booking link not found' });
+
+    const availability = await Availability.find({ userId: bookingLink.userId });
+    const bookings = await Booking.find({ bookingLinkId: bookingLink._id });
+
+    res.json({ availability, bookings });
+  } catch (error) {
+    console.error('Error fetching availability:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 router.post('/:linkId/book', async (req, res) => {
   const { linkId } = req.params;
   const { date, startTime, endTime } = req.body;
@@ -32,16 +77,15 @@ router.post('/:linkId/book', async (req, res) => {
     const bookingLink = await BookingLink.findOne({ linkId });
     if (!bookingLink) return res.status(404).json({ message: 'Booking link not found' });
 
-    // Check if slot already booked for this link
     const existingBooking = await Booking.findOne({
       bookingLinkId: bookingLink._id,
       date,
       startTime,
       endTime,
     });
+
     if (existingBooking) return res.status(400).json({ message: 'Time slot already booked' });
 
-    // Create new booking
     const booking = new Booking({
       bookingLinkId: bookingLink._id,
       userId: bookingLink.userId,
@@ -49,10 +93,12 @@ router.post('/:linkId/book', async (req, res) => {
       startTime,
       endTime,
     });
+
     await booking.save();
 
     res.status(201).json({ message: 'Booking successful', booking });
   } catch (error) {
+    console.error('Error processing booking:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

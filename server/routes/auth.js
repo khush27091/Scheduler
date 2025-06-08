@@ -1,29 +1,29 @@
+
 const express = require('express');
 const router = express.Router();
-const BookingLink = require('../models/BookingLink');
+const User = require('../models/user');
 
-// POST /api/bookinglink
-router.post('/', async (req, res) => {
+router.post('/register', async (req, res) => {
+  const { username, password } = req.body;
   try {
-    const { userId } = req.body;
+    const user = new User({ username, password });
+    await user.save();
+    res.status(201).json({ message: 'User registered successfully' });
+  } catch (error) {
+    res.status(400).json({ message: 'User already exists' });
+  }
+});
 
-    if (!userId) {
-      return res.status(400).json({ message: 'Missing userId' });
+router.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+  try {
+    const user = await User.findOne({ username });
+    if (!user || user.password !== password) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
-
-    const linkId = Math.random().toString(36).substring(2, 8); // basic unique ID
-
-    const bookingLink = new BookingLink({
-      userId,
-      link: linkId,
-    });
-
-    const saved = await bookingLink.save();
-
-    res.status(201).json({ link: `http://localhost:5173/public/${linkId}` });
-  } catch (err) {
-    console.error('Error generating booking link:', err);
-    res.status(500).json({ message: 'Internal Server Error' });
+    res.status(200).json({ message: 'Login successful', user });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
